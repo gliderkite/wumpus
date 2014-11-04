@@ -1,0 +1,8 @@
+## OS X proprietary formats
+*.DS_Store
+
+# Python specific
+*.pyc
+
+# Directories
+__pycache__/
