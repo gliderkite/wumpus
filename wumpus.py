@@ -62,6 +62,34 @@ def is_unexplored(cell):
   return cell[GOLD] == UNKNOWN
 
 
+def is_explored(cell):
+  """Returns True is the cell was explored.
+  That is: the agent known if there is gold there."""
+  return cell[GOLD] == ABSENT or cell[GOLD] == PRESENT
+
+
+def cells(kb, condition=None):
+  """Returns a generator of cells indexes that comply with the condition."""
+  y = 0
+  for row in kb:
+    x = 0
+    for c in row:
+      if condition is None or condition(c):
+        yield x, y
+      x += 1
+    y += 1
+
+
+def unexplored(kb):
+  """Returns a generator of unexplored cells indexes."""
+  return cells(kb, is_unexplored)
+
+
+def explored(kb):
+  """Returns a generator of already explored cells indexes."""
+  return cells(kb, is_explored)
+  
+
 
 
 
@@ -143,9 +171,12 @@ def move_forward(agent):
 
 def turn_steps(source, direction, destination):
   """Computes the number of steps needed to have the destination cell ahead."""
+  
   # check if source and destination are neighbors
   if not source in neighbors(destination):
     raise ValueError('Source and Destination must be neighbors.')
+  
+  # computes the delta as locations difference
   delta = tuple([a - b for a, b in zip(destination, source)])
   return DELTA.index(delta) - direction
 
@@ -153,103 +184,145 @@ def turn_steps(source, direction, destination):
 
 
 
-def unexplored(kb):
-  """Returns a generator of indexes of unexplored cells."""
-  y = 0
-  for row in kb:
-    x = 0
-    for c in row:
-      if is_unexplored(c):
-        yield x, y
-      x += 1
-    y += 1
-
 
 def safe_path(location, goal, kb):
+  """Returns a safe path to goal."""
+
   # check if the location and the goal are the same
   if location == goal:
     return tuple()
+  
   # build the FIFO data structure and the explores set of locations
   explored = set()
   path = []
   fifo = queue.Queue()
   fifo.put(location)
+  
   # while there is an unexplored neighbor
   while not fifo.empty():
+    
+    # get the current location
     loc = fifo.get()
     explored.add(loc)
     path.append(loc)
+
+    # generator of safe neighbors
+    neighborhood = ((x, y) for x, y in neighbors(loc) if (x, y) not in explored 
+                    and is_safe(kb[y][x]))
+    
     # for each neighboring safe cell
-    for x, y in ((x, y) for x, y in neighbors(loc) if (x, y) not in explored
-                  and is_safe(kb[y][x])):
+    for x, y in neighborhood:
       # check if the goal is reached
       if (x, y) == goal:
         path.append(goal)
         return tuple(path)
-      elif not is_unexplored(kb[y][x]):
+      else:
+      #elif not is_unexplored(kb[y][x]):
         fifo.put((x, y))
+  
   # path not found
   return None
 
 
 def path_to_actions(agent, path):
   """Gets the list of actions that an agent has to perform to follow the path."""
+  
   # check the presence of a valid path
   if path is None or not path or path[0] != agent[LOCATION]:
     raise ValueError('Invalid path')
+  
   actions = []
   direction = agent[DIRECTION]
-  i = 0
+
   # follow the path and compute the steps needed to turn and then move forword
   # the agent in order to reach the last location of the path
+  i = 0
   while i < len(path) - 1:
     steps = turn_steps(path[i], direction, path[i + 1])
     actions.append(steps)
     direction = (direction + steps) % 4
     i += 1
+  
   return tuple(actions)
 
 
 
 
 
-def perceive(knowledge, location):
+def perceive(kb, location):
   """Returns a tuple containing the perceptions accorging to the knowledge
   and the given location.
   Returns None if the agent has been killed by the Wumpus or falling in a ravine."""
   x, y = location
   # check there is a ravine or the Wumpus in this cell (if yes no perceptions)
-  if knowledge[y][x][RAVINE] == PRESENT or knowledge[y][x][WUMPUS] == PRESENT:
+  if kb[y][x][RAVINE] == PRESENT or kb[y][x][WUMPUS] == PRESENT:
     return None
   perceptions = [0] * 3
   # look neighboring cells to compute perceptions
-  for cell in [knowledge[y][x] for x, y in neighbors(location)]:
+  for cell in [kb[y][x] for x, y in neighbors(location)]:
     # check if the wumpus or ravines are present
     if cell[WUMPUS] == PRESENT:
-      perceptions[WUMPUS] = cell[WUMPUS]
+      perceptions[WUMPUS] = PRESENT
     if cell[RAVINE] == PRESENT:
       perceptions[RAVINE] = PRESENT
+    elif cell[RAVINE] == PROBABLE and perceptions[RAVINE] != PRESENT:
+      perceptions[RAVINE] = PROBABLE
   # check if the gold is in this cell
-  if knowledge[y][x][GOLD] == PRESENT:
+  if kb[y][x][GOLD] == PRESENT:
     perceptions[GOLD] = PRESENT  
   return tuple(perceptions)
 
 
-def tell(agent, kb, perceptions):
-  """Update agent knowledge base according to the given perception."""
-  loc = agent[LOCATION]
-  x, y = loc
+def tell(kb, perceptions, location):
+  """Update knowledge according to the given perception and location."""
+  
+  x, y = location
   # the agent is alive and perceived something therefore:
   # there are no ravines or the Wumpus in this cell
   kb[y][x][WUMPUS] = kb[y][x][RAVINE] = ABSENT
+
   # iterate over not safe neighboring cells
-  for c in [kb[y][x] for x, y in neighbors(loc) if not is_safe(kb[y][x])]:
+  for c in (kb[y][x] for x, y in neighbors(location) if not is_safe(kb[y][x])):
+    
+    # get near wumpus and ravines
+    nw = [kb[y][x] for x, y in neighbors(location) if not is_safe(kb[y][x], WUMPUS)]
+    nr = [kb[y][x] for x, y in neighbors(location) if not is_safe(kb[y][x], RAVINE)]
+    
     # parse wumpus perception
-    c[WUMPUS] = ABSENT if not perceptions[WUMPUS] else PROBABLE
+    if not perceptions[WUMPUS]:
+      c[WUMPUS] = ABSENT
+    elif perceptions[WUMPUS] == PROBABLE:
+      # the Wumpus can't move, therefore if there is the probability to have
+      # the Wumpus the same probability has to be in others neighbors, otherwise
+      # the current cell is the one with the Wumpus
+      if len(nw) == 1:
+        c[WUMPUS] = PRESENT
+    elif c[WUMPUS] != PRESENT:
+      c[WUMPUS] = PRESENT if len(nw) == 1 else PROBABLE
+
     # parse ravine perception
-    c[RAVINE] = ABSENT if not perceptions[RAVINE] else PROBABLE
+    if not perceptions[RAVINE]:
+      c[RAVINE] = ABSENT
+    elif perceptions[RAVINE] == PROBABLE:
+      # ravines can't move, therefore if there is the probability to have a
+      # ravine the same probability has to be in others neighbors, otherwise
+      # the current cell is the one with the ravine
+      if len(nr) == 1:
+        c[RAVINE] = PRESENT
+    elif c[RAVINE] != PRESENT:
+      c[RAVINE] = PRESENT if len(nr) == 1 else PROBABLE
+  
   # parse gold perception
   kb[y][x][GOLD] = ABSENT if not perceptions[GOLD] else PRESENT
+
+
+def update(kb, location):
+  """Update the knowledge."""
+
+  # update the knowledge according to all the already explored cells
+  for loc in [l for l in explored(kb) if l != location]:
+    perceptions = perceive(kb, loc)
+    tell(kb, perceptions, loc)
 
 
 def ask(agent, kb):
@@ -260,6 +333,7 @@ def ask(agent, kb):
     agent[GOLD] = True
   # list of actions to perform
   actions = []
+
   # check if the agent is seeking gold
   if not agent[GOLD]:
     # get the first neighbor cell safe and unexplored (if any)
@@ -291,10 +365,12 @@ def ask(agent, kb):
     if unsafe:
       print(unsafe)
       pass
+
   else:
     # back to the entry
     path = safe_path(agent[LOCATION], (0, 0), kb)
     return path_to_actions(agent, path)
+
   # can't find an action
   return None
     
@@ -330,18 +406,17 @@ if __name__ == '__main__':
   # agent location, direction and gold
   agent = [(0, 0), 1, False]
   # agent knowledge base
-  kb = [[[UNKNOWN] * 3 for x in range(4)] for y in range(4)]
+  known = [[[UNKNOWN] * 3 for x in range(4)] for y in range(4)]
   # the entry if safe
-  kb[0][0] = [ABSENT] * 3
+  known[0][0] = [ABSENT] * 3
   # place initial entities (wumpus, gold and ravines)
   place_wumpus(world, available)
   place_gold(world, available)
   place_ravines(world, available)
 
-  display(world)
-  print()
-
   while not agent[GOLD]:
+    display(world)
+    print()
     print('Agent:', end=' ')
     print(agent)
     p = perceive(world, agent[LOCATION])
@@ -351,11 +426,19 @@ if __name__ == '__main__':
     print('Perception:', end=' ')
     print(p)
     print()
-    tell(agent, kb, p)
-    display(kb)
+    tell(known, p, agent[LOCATION])
+    display(known)
+    print()
+    print('Update knowledge:')
+    update(known, agent[LOCATION])
+    display(known)
+    print()
+    actions = ask(agent, known)
+    print('Actions:', end=' ')
+    print(actions)
     print()
     input('Next?')
-    actions = ask(agent, kb)
     perform(agent, actions)
+
 
   print(agent)
