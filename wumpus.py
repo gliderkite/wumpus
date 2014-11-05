@@ -18,7 +18,7 @@ PRESENT, ABSENT, PROBABLE, UNKNOWN = 1, 0, 2, -1
 DELTA = (0, -1), (1, 0), (0, 1), (-1, 0)
 
 # value used to denote an agent
-LOCATION, DIRECTION, HAS_GOLD, IS_ALIVE = 0, 1, 2, 3
+LOCATION, DIRECTION, HAS_GOLD = 0, 1, 2
 
 
 
@@ -183,45 +183,47 @@ def turn_steps(source, direction, destination):
 
 
 
+def safe_path_rec(kb, location, goal, path, visited):
+  """Depth-first search that builds a safe and already explore dpath to goal."""
+  
+  # check if the location and the goal are the same
+  if location == goal:
+    return True
+
+  # generator of explored (but not yet visited by the search) neighbors
+  neighborhood = ((x, y) for x, y in neighbors(location) if (x, y) not in visited 
+                  and (is_explored(kb[y][x]) or (x, y) == goal))
+
+  # iterate over each neighbor
+  for n in neighborhood:
+    # add the node to the path
+    path.append(n)
+    visited.add(n)
+    # recursive call
+    if safe_path_rec(kb, n, goal, path, visited):
+      return True
+    # this node does not lead to the goal
+    visited.remove(n)
+    path.remove(n)
 
 
-def safe_path(location, goal, kb):
+def safe_path(kb, location, goal):
   """Returns a safe path to goal."""
 
   # check if the location and the goal are the same
   if location == goal:
     return tuple()
-  
-  # build the FIFO data structure and the explores set of locations
-  explored = set()
-  path = []
-  fifo = queue.Queue()
-  fifo.put(location)
-  
-  # while there is an unexplored neighbor
-  while not fifo.empty():
-    
-    # get the current location
-    loc = fifo.get()
-    explored.add(loc)
-    path.append(loc)
 
-    # generator of safe neighbors
-    neighborhood = ((x, y) for x, y in neighbors(loc) if (x, y) not in explored 
-                    and is_safe(kb[y][x]))
-    
-    # for each neighboring safe cell
-    for x, y in neighborhood:
-      # check if the goal is reached
-      if (x, y) == goal:
-        path.append(goal)
-        return tuple(path)
-      else:
-      #elif not is_unexplored(kb[y][x]):
-        fifo.put((x, y))
-  
-  # path not found
-  return None
+  path = [location]
+  visited = set()
+  visited.add(location)
+
+  # implement a depth-first search
+  safe_path_rec(kb, location, goal, path, visited)
+
+  # return the path or None if the path wasn't found
+  if len(path) > 0:
+    return tuple(path)
 
 
 def path_to_actions(agent, path):
@@ -248,28 +250,76 @@ def path_to_actions(agent, path):
 
 
 
+def shoot(world, location, direction, size=(4, 4)):
+  
+  x, y = location
+  width, height = size
+
+  if direction == 0:
+    # follow above cells
+    i = y
+    while i >= 0:
+      if world[i][x][WUMPUS] == PRESENT:
+        return True
+      i -= 1
+  elif direction == 1:
+    # follow right cells
+    i = x
+    while i < width:
+      if world[y][i][WUMPUS] == PRESENT:
+        return True
+      i += 1
+  elif direction == 2:
+    # follow below cells
+    i = y
+    while i < height:
+      if world[i][x][WUMPUS] == PRESENT:
+        return True
+      i += 1
+  else:
+    # follow left cells
+    i = x
+    while i >= 0:
+      if world[y][i][WUMPUS] == PRESENT:
+        return True
+      i -= 1
+
+  # the arrow doesn't hit the Wumpus
+  return False
+
 
 def perceive(kb, location):
   """Returns a tuple containing the perceptions accorging to the knowledge
   and the given location.
   Returns None if the agent has been killed by the Wumpus or falling in a ravine."""
+  
   x, y = location
+  
   # check there is a ravine or the Wumpus in this cell (if yes no perceptions)
   if kb[y][x][RAVINE] == PRESENT or kb[y][x][WUMPUS] == PRESENT:
     return None
+  
   perceptions = [0] * 3
+  
   # look neighboring cells to compute perceptions
   for cell in [kb[y][x] for x, y in neighbors(location)]:
-    # check if the wumpus or ravines are present
+    
+    # check if the wumpus is here
     if cell[WUMPUS] == PRESENT:
       perceptions[WUMPUS] = PRESENT
+    elif cell[WUMPUS] == PROBABLE and perceptions[WUMPUS] != PRESENT:
+      perceptions[WUMPUS] = PROBABLE
+    
+    # check if ravines are here
     if cell[RAVINE] == PRESENT:
       perceptions[RAVINE] = PRESENT
     elif cell[RAVINE] == PROBABLE and perceptions[RAVINE] != PRESENT:
       perceptions[RAVINE] = PROBABLE
+  
   # check if the gold is in this cell
   if kb[y][x][GOLD] == PRESENT:
     perceptions[GOLD] = PRESENT  
+  
   return tuple(perceptions)
 
 
@@ -281,6 +331,9 @@ def tell(kb, perceptions, location):
   # there are no ravines or the Wumpus in this cell
   kb[y][x][WUMPUS] = kb[y][x][RAVINE] = ABSENT
 
+  # check if the Wumpus location is identified with certainty
+  #wloc = any(kb[y][x] for x, y in neighbors(location) if is_deadly(kb[y][x], WUMPUS))
+
   # iterate over not safe neighboring cells
   for c in (kb[y][x] for x, y in neighbors(location) if not is_safe(kb[y][x])):
     
@@ -288,29 +341,31 @@ def tell(kb, perceptions, location):
     nw = [kb[y][x] for x, y in neighbors(location) if not is_safe(kb[y][x], WUMPUS)]
     nr = [kb[y][x] for x, y in neighbors(location) if not is_safe(kb[y][x], RAVINE)]
     
-    # parse wumpus perception
-    if not perceptions[WUMPUS]:
-      c[WUMPUS] = ABSENT
-    elif perceptions[WUMPUS] == PROBABLE:
-      # the Wumpus can't move, therefore if there is the probability to have
-      # the Wumpus the same probability has to be in others neighbors, otherwise
-      # the current cell is the one with the Wumpus
-      if len(nw) == 1:
-        c[WUMPUS] = PRESENT
-    elif c[WUMPUS] != PRESENT:
-      c[WUMPUS] = PRESENT if len(nw) == 1 else PROBABLE
+    if c[WUMPUS] != ABSENT:
+      # parse wumpus perception
+      if not perceptions[WUMPUS]:
+        c[WUMPUS] = ABSENT
+      elif perceptions[WUMPUS] == PROBABLE:
+        # the Wumpus can't move, therefore if there is the probability to have
+        # the Wumpus the same probability has to be in others neighbors, otherwise
+        # the current cell is the one with the Wumpus
+        if len(nw) == 1:
+          c[WUMPUS] = PRESENT
+      elif c[WUMPUS] != PRESENT:
+        c[WUMPUS] = PRESENT if len(nw) == 1 else PROBABLE
 
-    # parse ravine perception
-    if not perceptions[RAVINE]:
-      c[RAVINE] = ABSENT
-    elif perceptions[RAVINE] == PROBABLE:
-      # ravines can't move, therefore if there is the probability to have a
-      # ravine the same probability has to be in others neighbors, otherwise
-      # the current cell is the one with the ravine
-      if len(nr) == 1:
-        c[RAVINE] = PRESENT
-    elif c[RAVINE] != PRESENT:
-      c[RAVINE] = PRESENT if len(nr) == 1 else PROBABLE
+    if c[RAVINE] != ABSENT:
+      # parse ravine perception
+      if not perceptions[RAVINE]:
+        c[RAVINE] = ABSENT
+      elif perceptions[RAVINE] == PROBABLE:
+        # ravines can't move, therefore if there is the probability to have a
+        # ravine the same probability has to be in others neighbors, otherwise
+        # the current cell is the one with the ravine
+        if len(nr) == 1:
+          c[RAVINE] = PRESENT
+      elif c[RAVINE] != PRESENT:
+        c[RAVINE] = PRESENT if len(nr) == 1 else PROBABLE
   
   # parse gold perception
   kb[y][x][GOLD] = ABSENT if not perceptions[GOLD] else PRESENT
@@ -345,14 +400,14 @@ def ask(agent, kb):
     # get the first cell safe and unexplored
     safe = next(((x, y) for x, y in unexplored(kb) if is_safe(kb[y][x])), None)
     if safe:
-      path = safe_path(agent[LOCATION], safe, kb)
+      path = safe_path(kb, agent[LOCATION], safe)
       return path_to_actions(agent, path)
     # get a random unexplored cell that may contain the Wumpus but no ravines
     unsafe = [(x, y) for x, y in unexplored(kb) if is_safe(kb[y][x], RAVINE) 
               and is_dangerous(kb[y][x], WUMPUS)]
     if unsafe:
       print(unsafe)
-      pass
+      #raise NotImplementedError()
     # get a random unexplored cell that may contain a ravine but no the Wumpus
     unsafe = [(x, y) for x, y in unexplored(kb) if is_safe(kb[y][x], WUMPUS)
               and is_dangerous(kb[y][x], RAVINE)]
@@ -364,11 +419,11 @@ def ask(agent, kb):
     unsafe = [(x, y) for x, y in unexplored(kb) if is_dangerous(kb[y][x])]
     if unsafe:
       print(unsafe)
-      pass
+      raise NotImplementedError()
 
   else:
     # back to the entry
-    path = safe_path(agent[LOCATION], (0, 0), kb)
+    path = safe_path(kb, agent[LOCATION], (0, 0))
     return path_to_actions(agent, path)
 
   # can't find an action
