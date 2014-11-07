@@ -6,7 +6,7 @@ import queue
 import sys
 
 from entity import Room, Agent, Knowledge, Cave
-from knowledge import perceive, tell
+from knowledge import perceive, tell, update
 
 
 
@@ -371,7 +371,7 @@ def tell(kb, perceptions, location):
   
   # parse gold perception
   kb[y][x][GOLD] = ABSENT if not perceptions[GOLD] else PRESENT
-'''
+
 
 def update(kb, location):
   """Update the knowledge."""
@@ -380,7 +380,7 @@ def update(kb, location):
   for loc in [l for l in explored(kb) if l != location]:
     perceptions = perceive(kb, loc)
     tell(kb, perceptions, loc)
-
+'''
 
 def ask(agent, kb):
   """Returns an action according to the current state of the agent knowledge."""
@@ -455,29 +455,33 @@ def display(matrix):
 
 
 if __name__ == '__main__':
+  
   # init random seed
   random.seed(int(sys.argv[1]))
   # define entities
   cave = Cave()
   kb = Knowledge()
   agent = Agent()
+
   # while the agent is seeking gold
   while not agent.has_gold:
+
     print('Cave:\n{}\n'.format(cave))
     print('Agent:\n{}\n'.format(agent))
 
     perceptions = perceive(cave, agent.location)
-
     if perceptions is None:
       print('The agent died\n')
       break
     print('Perceptions:\n{}\n'.format(perceptions))
 
     tell(kb, perceptions, agent.location)
-
     print('Knowledge:\n{}\n'.format(kb))
 
-    break
+    update(kb, agent.location)
+    print('Knowledge updated:\n{}\n'.format(kb))
+
+    input('Next?')
 
   '''
   # define the world and the cell available for ravines and the wumpus

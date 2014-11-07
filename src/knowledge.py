@@ -1,8 +1,24 @@
 #! /usr/bin/env python
 
 
+import enum
+
 from motion import neighbors
 from entity import Status, Entity
+
+
+
+class Action(enum.Enum):
+  """Enumeration of agent feasible actions."""
+  Move = 0
+  Shoot = 1
+  TakeGold = 2
+
+
+class Goal(enum.Enum):
+  """Enumerates agent's goals."""
+  SeekGold = 0
+  BackToEntry = 1
 
 
 
@@ -73,11 +89,58 @@ def tell(kb, perceptions, loc):
   kb[loc].gold = gold
 
 
-
-def update(kb, location):
+def update(kb, loc):
   """Update the knowledge."""
   # update the knowledge according to all the already explored cells
-  for loc in [l for l in explored(kb) if l != location]:
-    perceptions = perceive(kb, loc)
-    tell(kb, perceptions, loc)
+  for l in [x for x in kb.explored() if x != loc]:
+    tell(kb, perceive(kb, l), l)
 
+
+def ask(kb, loc, goal):
+  """Returns an action according to the current state of the knowledge.
+  The action is a tuple: the first element is the type of the action, while
+  the second element is a list of movement if the type is Action.Move,
+  otherwise is None."""
+  # if the agent is seeking gold
+  if goal == Goal.SeekGold:
+    # check if this room contains the gold
+    if kb[loc].gold == Status.Present:
+      return Action.TakeGold, None
+    # list of actions to perform
+    actions = []
+    # get the first neighbor cell safe and unexplored (if any)
+    safe_and_unexplored = lambda r: r.is_safe() and r.is_unexplored
+    safe = next(l for l in neighbors(loc) if safe_and_unexplored(kb[l]), None)
+    if safe:
+      actions.append(turn_steps(agent[LOCATION], agent[DIRECTION], safe))
+      return tuple(actions)
+    # get the first cell safe and unexplored
+    safe = next(((x, y) for x, y in unexplored(kb) if is_safe(kb[y][x])), None)
+    if safe:
+      path = safe_path(kb, agent[LOCATION], safe)
+      return path_to_actions(agent, path)
+    # get a random unexplored cell that may contain the Wumpus but no ravines
+    unsafe = [(x, y) for x, y in unexplored(kb) if is_safe(kb[y][x], RAVINE) 
+              and is_dangerous(kb[y][x], WUMPUS)]
+    if unsafe:
+      print(unsafe)
+      #raise NotImplementedError()
+    # get a random unexplored cell that may contain a ravine but no the Wumpus
+    unsafe = [(x, y) for x, y in unexplored(kb) if is_safe(kb[y][x], WUMPUS)
+              and is_dangerous(kb[y][x], RAVINE)]
+    if unsafe:
+      choice = random.choice(unsafe)
+      actions.append(turn_steps(agent[LOCATION], agent[DIRECTION], choice))
+      return tuple(actions)
+    # get a random unexplored cell that may contain either the Wumpus or ravines
+    unsafe = [(x, y) for x, y in unexplored(kb) if is_dangerous(kb[y][x])]
+    if unsafe:
+      print(unsafe)
+      raise NotImplementedError()
+  elif goal == Goal.BackToEntry:
+    # back to the entry
+    path = safe_path(kb, agent[LOCATION], (0, 0))
+    return path_to_actions(agent, path)
+  # can't find an action
+  return None
+    

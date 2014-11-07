@@ -46,7 +46,7 @@ class Room:
     return str([self.wumpus.value, self.pit.value, self.gold.value])
 
 
-  def is_safe(self, danger):
+  def is_safe(self, danger=None):
     """Returns True if the room doesn't contains neither the Wumpus nor a pit."""
     if danger is None:
       return self.wumpus == Status.Absent and self.pit == Status.Absent
@@ -58,18 +58,15 @@ class Room:
     raise ValueError
   
   @property
-  def is_safe(self):
-    """Returns True if the room doesn't contains neither the Wumpus nor a pit."""
-    return self.is_safe(None)
-  
-  @property
   def is_explored(self):
     """Returns True is the room was already explored."""
-    assert gold != Status.LikelyPresent
-    return gold != Status.Unknown
+    assert self.gold != Status.LikelyPresent
+    return self.gold != Status.Unknown
 
-
-
+  @property
+  def is_unexplored(self):
+    """Returns True is the room is not explored."""
+    return not self.is_explored
 
 
 
@@ -127,11 +124,24 @@ class Knowledge:
     self._rooms[y][x] = value
 
 
-  def charted(self):
+  def rooms(self, condition=None):
+    """Returns a generator of cells indexes that comply with the condition."""
+    y = 0
+    for path in self._rooms:
+      x = 0
+      for room in path:
+        if condition is None or condition(room):
+          yield x, y
+        x += 1
+      y += 1
+
+  def explored(self):
     """Returns a generator of indexes of already explored rooms."""
-    pass
+    return self.rooms(lambda r: r.is_explored)
 
-
+  def unexplored(self):
+    """Returns a generator of indexes of unexplored rooms."""
+    return self.rooms(lambda r: not r.is_explored)
 
 
 
