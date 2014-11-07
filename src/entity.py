@@ -1,32 +1,10 @@
 #! /usr/bin/env python
 
 
-import enum
 import random
 
-
-
-class Status(enum.Enum):
-  """Enumerations used to denote the Room status."""
-  Unknown = -1
-  Absent = 0
-  Present = 1
-  LikelyPresent = 2
-
-
-class CardinalPoint(enum.Enum):
-  """Cardinal directions enumeration."""
-  North = 0
-  East = 1
-  South = 2
-  West = 3
-
-
-class Entity(enum.Enum):
-  """Entities enumeration."""
-  Wumpus = 0
-  Pit = 1
-  Gold = 2
+from enumeration import Status, Entity, Action
+from motion import turn, move_forward
 
 
 
@@ -57,6 +35,28 @@ class Room:
     # invalid danger argument
     raise ValueError
   
+  def is_dangerous(self, danger=None):
+    """Returns True if the room may contain either the Wumpus or a pit."""
+    if danger is None:
+      return self.wumpus == Status.LikelyPresent or self.pit == Status.LikelyPresent
+    if danger == Entity.Wumpus:
+      return self.wumpus == Status.LikelyPresent
+    if danger == Entity.Pit:
+      return self.pit == Status.LikelyPresent
+    # invalid danger argument
+    raise ValueError
+
+  def is_deadly(self, danger=None):
+    """Returns True if the room contains either the Wumpus or a pit."""
+    if danger is None:
+      return self.wumpus == Status.Present or self.pit == Status.Present
+    if danger == Entity.Wumpus:
+      return self.wumpus == Status.Present
+    if danger == Entity.Pit:
+      return self.pit == Status.Present
+    # invalid danger argument
+    raise ValueError
+
   @property
   def is_explored(self):
     """Returns True is the room was already explored."""
@@ -76,14 +76,29 @@ class Agent:
   def __init__(self):
     """Initializes the agent with default parameters."""
     self.location = (0, 0)
-    self.direction = CardinalPoint.East
+    self.direction = 1
     self.has_gold = False
     self.has_arrow = True
 
   def __repr__(self):
     """Returns the string representation of this instance."""
-    return str([self.location, self.direction.name, self.has_gold, self.has_arrow])
+    return str([self.location, self.direction, self.has_gold, self.has_arrow])
   
+
+  def perform(self, action, cave):
+    """Performs an action."""
+    kind, rotations = action
+    if kind == Action.Move:
+      # moves the agent
+      for steps in rotations:
+        self.direction = turn(self.direction, steps)
+        self.location = move_forward(self.location, self.direction)
+    elif kind == Action.Shoot:
+      pass
+    elif kind == Action.TakeGold:
+      cave[self.location].gold = Status.Absent
+      self.has_gold = True
+
 
 
 class Knowledge:
@@ -135,10 +150,12 @@ class Knowledge:
         x += 1
       y += 1
 
+  @property
   def explored(self):
     """Returns a generator of indexes of already explored rooms."""
     return self.rooms(lambda r: r.is_explored)
 
+  @property
   def unexplored(self):
     """Returns a generator of indexes of unexplored rooms."""
     return self.rooms(lambda r: not r.is_explored)
