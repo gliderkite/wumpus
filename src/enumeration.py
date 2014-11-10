@@ -23,7 +23,7 @@ class Action(enum.Enum):
   """Enumeration of agent feasible actions."""
   Move = 0
   Shoot = 1
-  TakeGold = 2
+  Grab = 2
 
 
 class Goal(enum.Enum):

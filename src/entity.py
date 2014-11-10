@@ -34,6 +34,10 @@ class Room:
       return self.pit == Status.Absent
     # invalid danger argument
     raise ValueError
+
+  def is_unsafe(self, danger=None):
+    """Returns True if the room (may) contains neither the Wumpus or a pit."""
+    return self.is_dangerous(danger) or self.is_deadly(danger)
   
   def is_dangerous(self, danger=None):
     """Returns True if the room may contain either the Wumpus or a pit."""
@@ -85,20 +89,73 @@ class Agent:
     return str([self.location, self.direction, self.has_gold, self.has_arrow])
   
 
-  def perform(self, action, cave):
+  def perform(self, action, cave, kb):
     """Performs an action."""
     kind, rotations = action
     if kind == Action.Move:
-      # moves the agent
-      for steps in rotations:
-        self.direction = turn(self.direction, steps)
-        self.location = move_forward(self.location, self.direction)
+      self.move(rotations)
     elif kind == Action.Shoot:
-      pass
-    elif kind == Action.TakeGold:
+      self.direction = turn(self.direction, rotations)
+      self.shoot(cave, kb)
+    elif kind == Action.Grab:
       cave[self.location].gold = Status.Absent
       self.has_gold = True
 
+  def move(self, rotations):
+    """Moves the agent."""
+    for steps in rotations:
+      self.direction = turn(self.direction, steps)
+      self.location = move_forward(self.location, self.direction)
+
+  def shoot(self, cave, kb):
+    """Shoots the arrow and check if the Wumpus was hit."""
+    x, y = self.location
+    width, height = cave.size
+    # remove the arrow
+    self.has_arrow = False
+    # shoot according to the current direction
+    if self.direction == 0:
+      # follow above rooms
+      i = y
+      while i >= 0:
+        kb[x, i].wumpus = Status.Absent
+        if cave[x, i].wumpus == Status.Present:
+          cave[x, i].wumpus = Status.Absent
+          kb.kill_wumpus()
+          return True
+        i -= 1
+    elif self.direction == 1:
+      # follow right rooms
+      i = x
+      while i < width:
+        kb[i, y].wumpus = Status.Absent
+        if cave[i, y].wumpus == Status.Present:
+          cave[i, y].wumpus = Status.Absent
+          kb.kill_wumpus()
+          return True
+        i += 1
+    elif self.direction == 2:
+      # follow below rooms
+      i = y
+      while i < height:
+        kb[x, i].wumpus = Status.Absent
+        if cave[x, i].wumpus == Status.Present:
+          cave[x, i].wumpus = Status.Absent
+          kb.kill_wumpus()
+          return True
+        i += 1
+    else:
+      # follow left rooms
+      i = x
+      while i >= 0:
+        kb[i, y].wumpus = Status.Absent
+        if cave[i, y].wumpus == Status.Present:
+          cave[i, y].wumpus = Status.Absent
+          kb.kill_wumpus()
+          return True
+        i -= 1
+    # the arrow didin't hit the Wumpus
+    return False
 
 
 class Knowledge:
@@ -159,6 +216,12 @@ class Knowledge:
   def unexplored(self):
     """Returns a generator of indexes of unexplored rooms."""
     return self.rooms(lambda r: not r.is_explored)
+
+  def kill_wumpus(self):
+    """Change the status of any room such that there can't be the Wumpus."""
+    for path in self._rooms:
+      for room in path:
+        room.wumpus = Status.Absent
 
 
 

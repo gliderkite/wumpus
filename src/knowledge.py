@@ -45,23 +45,19 @@ def tell(kb, perceptions, loc):
   near = [kb[l] for l in neighbors(loc)]
   # iterate over not safe neighboring rooms
   for room in (r for r in near if not r.is_safe()):
-    # check how many neighboring rooms may contain the Wumpus and then pits
-    p = len([r for r in near if not r.is_safe(Entity.Pit)])
     # parse Wumpus perception
     if room.wumpus != Status.Absent:
       if wumpus == Status.Absent:
         room.wumpus = Status.Absent
       elif wumpus == Status.LikelyPresent:
-        # if in all neighboring rooms there is only one Wumpus, since this
-        # is the room where the Wumpus was parceived, ans since the Wumpus can't
-        # move, then the Wumpus has to be right in this room
+        # check if this is the only place where the Wumpus may be
         if len([r for r in near if r.is_dangerous(Entity.Wumpus)]) == 1:
           room.wumpus = Status.Present
       elif room.wumpus == Status.Unknown:
-        if any(r for r in near if r.is_deadly(Entity.Wumpus)):
+        if any(r.is_deadly(Entity.Wumpus) for r in near):
           # the agent knows the Wumpus location -> it can't be in this room
           room.wumpus = Status.Absent
-        elif all(r for r in near if r.is_safe(Entity.Wumpus) and r != room):
+        elif all(r.is_safe(Entity.Wumpus) for r in near if r != room):
           # all others neighbors are safe -> the Wumpus must be in this room
           room.wumpus = Status.Present
         else:
@@ -71,13 +67,15 @@ def tell(kb, perceptions, loc):
       if pit == Status.Absent:
         room.pit = Status.Absent
       elif pit == Status.LikelyPresent:
-        # if in all neighboring rooms there is only one pit, since this
-        # is the room where the pit was parceived, ans since a pit can't
-        # move, then the pit has to be right in this room
-        if p == 1:
+        # check if this is the only place where the pit may be
+        if len([r for r in near if r.is_dangerous(Entity.Pit)]) == 1:
           room.pit = Status.Present
       elif room.pit == Status.Unknown:
-        room.pit = Status.Present if p == 1 else Status.LikelyPresent
+        if all(r.is_safe(Entity.Pit) for r in near if r != room):
+          # all others neighbors are safe -> the pit must be in this room
+          room.pit = Status.Present
+        else:
+          room.pit = Status.LikelyPresent
   # parse gold perception
   kb[loc].gold = gold
 
@@ -93,44 +91,55 @@ def ask(kb, loc, direction, goal):
   """Returns an action according to the current state of the knowledge.
   The action is a tuple: the first element is the type of the action, while
   the second element is a list of movement if the type is Action.Move,
-  otherwise is None."""
+  or Shoot, otherwise None."""
   # if the agent is seeking gold
   if goal == Goal.SeekGold:
     # check if this room contains the gold
     if kb[loc].gold == Status.Present:
-      return Action.TakeGold, None
+      return Action.Grab, None
     # get the first neighbor room safe and unexplored (if any)
     state = lambda r: r.is_safe() and r.is_unexplored
     dest = next((l for l in neighbors(loc) if state(kb[l])), None)
     if dest:
       return Action.Move, (spins(loc, direction, dest),)
-    # get any room safe and unexplored
-    dest = next((l for l in kb.unexplored if kb[l].is_safe()), None)
+    # get any room safe and unexplored (if the agent can reach it)
+    state = lambda r, l: r.is_safe() and any(kb[x].is_explored for x in neighbors(l))
+    dest = next((l for l in kb.unexplored if state(kb[l], l)), None)
     if dest:
       path = known_path(kb, loc, dest)
       return Action.Move, path_to_spins(path, direction)
-    # get a random unexplored room that may contain the Wumpus but no pits
-    state = lambda r: r.is_safe(Entity.Pit) and r.is_dangerous(Entity.Wumpus)
-    rooms = [l for l in kb.unexplored if state(kb[l])]
-    if rooms:
-      print(rooms)
-      raise NotImplementedError
-    # get a random unexplored room that may contain a ravine but not the Wumpus
-    state = lambda r: r.is_safe(Entity.Wumpus) and r.is_dangerous(Entity.Pit)
-    rooms = [l for l in kb.unexplored if state(kb[l])]
+    # get a neighboring room that (may) contain the Wumpus but no pits
+    state = lambda r: r.is_safe(Entity.Pit) and r.is_unsafe(Entity.Wumpus)
+    dest = next((l for l in neighbors(loc) if state(kb[l])), None)
+    if dest:
+      return Action.Shoot, spins(loc, direction, dest)
+    # get a room that may contain the Wumpus but no pits
+    state = lambda r: r.is_safe(Entity.Pit) and r.is_unsafe(Entity.Wumpus)
+    dest = next((l for l in kb.unexplored if state(kb[l])), None)
+    if dest:
+      # get a neighbor explored cell
+      dest = next((l for l in neighbors(dest) if kb[l].is_explored))
+      path = known_path(kb, loc, dest)
+      return Action.Move, path_to_spins(path, direction)
+    # get a neighboring room that may contain the Wumpus
+    state = lambda r: r.is_dangerous(Entity.Wumpus)
+    dest = next((l for l in neighbors(loc) if state(kb[l])), None)
+    if dest:
+      return Action.Shoot, spins(loc, direction, dest)
+    # get a random room that may contain a ravine
+    rooms = [l for l in kb.unexplored if kb[l].is_dangerous(Entity.Pit)]
     if rooms:
       dest = random.choice(rooms)
       path = known_path(kb, loc, dest)
       return Action.Move, path_to_spins(path, direction)
-    # get a random unexplored room that may contain either the Wumpus or pits
-    rooms = [l for l in kb.unexplored if kb[l].is_dangerous()]
-    if rooms:
-      print(rooms)
-      raise NotImplementedError
+    # get an unexplored cell
+    dest = next((l for l in kb.unexplored), None)
+    if dest:
+      path = known_path(kb, loc, dest)
+      return Action.Move, path_to_spins(path, direction)
   elif goal == Goal.BackToEntry:
     # back to the entry
     path = known_path(kb, loc, (0, 0))
     return Action.Move, path_to_spins(path, direction)
   # unable to find an action
   return None
-    
