@@ -4,6 +4,7 @@
 import enum
 
 
+
 class Status(enum.Enum):
   """Enumerations used to denote the Room status."""
   Unknown = -1
@@ -24,9 +25,18 @@ class Action(enum.Enum):
   Move = 0
   Shoot = 1
   Grab = 2
+  Turn = 3
 
 
 class Goal(enum.Enum):
   """Enumerates agent's goals."""
   SeekGold = 0
   BackToEntry = 1
+
+
+class CardinalDirection(enum.Enum):
+  """Enumerates carcinal directions."""
+  North = 0
+  East = 1
+  South = 2
+  West = 3

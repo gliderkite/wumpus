@@ -3,7 +3,7 @@
 
 import random
 
-from enumeration import Status, Entity, Action
+from enumeration import Status, Entity, Action, CardinalDirection
 from motion import turn, move_forward
 
 
@@ -88,18 +88,30 @@ class Agent:
     """Returns the string representation of this instance."""
     return str([self.location, self.direction, self.has_gold, self.has_arrow])
   
+  def __str__(self):
+    info = 'Location: {}\n'.format(self.location)
+    info += 'Direction: {}\n'.format(CardinalDirection(self.direction).name)
+    info += 'Has gold? {}\n'.format(self.has_gold)
+    info += 'Has the arrow? {}'.format(self.has_arrow)
+    return info
+
 
   def perform(self, action, cave, kb):
-    """Performs an action."""
+    """Performs an action.
+    Returns True if the action kills the Wumpus, otherwise False."""
     kind, rotations = action
     if kind == Action.Move:
       self.move(rotations)
     elif kind == Action.Shoot:
-      self.direction = turn(self.direction, rotations)
-      self.shoot(cave, kb)
+      if rotations is not None:
+        self.direction = turn(self.direction, rotations)
+      return self.shoot(cave, kb)
     elif kind == Action.Grab:
       cave[self.location].gold = Status.Absent
       self.has_gold = True
+    elif kind == Action.Turn:
+      self.direction = turn(self.direction, rotations)
+    return False
 
   def move(self, rotations):
     """Moves the agent."""
@@ -156,6 +168,7 @@ class Agent:
         i -= 1
     # the arrow didin't hit the Wumpus
     return False
+
 
 
 class Knowledge:
