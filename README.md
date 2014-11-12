@@ -3,7 +3,7 @@ A Python module that allows to play with the original [Hunt the Wumpus](http://e
 
 
 ## How to Play
-The agent is located in a cave with 16 rooms (a 4x4 grid). The goal is to find the gold in one of this room and return to the the entry. But the cave contains also the Wumpus, a beast that eats anyone that enters its room, and zero or more pits, that will trap anyone who enters the room except for the Wumpus.
+The agent is located in a cave with 16 rooms (a 4x4 grid). The goal is to find the gold in one of this rooms and back to entry. But the cave contains also the Wumpus, a beast that eats anyone that enters its room, and zero or more pits, that will trap anyone who enters the room except for the Wumpus.
 
 The agent can perceive several information according to its current location:
 
