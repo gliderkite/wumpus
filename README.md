@@ -3,13 +3,14 @@ A Python module that allows to play with the original [Hunt the Wumpus](http://e
 
 
 ## How to Play
-The agent is located in a cave with 16 rooms (a 4x4 grid). The goal is to find the gold in one of this room and return the the entry. But the cave contains also the Wumpus, a beast that eats anyone that enters its room, and zero or more pits, that will trap anyone who enters the room except for the wumpus.
-The agent can perceive several information according to the current room where he is located:
+The agent is located in a cave with 16 rooms (a 4x4 grid). The goal is to find the gold in one of this room and return to the the entry. But the cave contains also the Wumpus, a beast that eats anyone that enters its room, and zero or more pits, that will trap anyone who enters the room except for the Wumpus.
+
+The agent can perceive several information according to its current location:
 
 1. In the square containing the wumpus and in the directly (not diagonal) adjacent squares, the agent will perceive a Stench.
 2. In the squares directly adjacent to a pit, the agent will perceive a Breeze.
 3. In the square where gold is, the agent will perceive a Glitter.
-4 .When the wumpus is killed, it emits a Scream that can be perceived anywhere in the cave.
+4. When the wumpus is killed, it emits a Scream that can be perceived anywhere in the cave.
 
 The agent can perform five different action:
 
@@ -23,7 +24,7 @@ The agent can perform five different action:
 
 
 ## Requirements
-In order to play the 15-puzzle you have to download and install [Python (3.X version)](https://www.python.org/downloads/).
+In order to play with Hunt the Wumpus you have to download and install [Python (3.X version)](https://www.python.org/downloads/).
 
 
 ## Launch the game
